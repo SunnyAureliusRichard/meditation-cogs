@@ -129,45 +129,36 @@ class MeditationCog(commands.Cog):
         
         # If we've never posted, always post
         if not self.settings['last_post_time']:
-            log.info("No last post time found, should post")
             self.settings['was_first_post'] = True
             return True
             
         last_post = datetime.datetime.fromisoformat(self.settings['last_post_time'])
         time_since_last_post = (now - last_post).total_seconds()
-        log.info(f"Last post was at {last_post.isoformat()}, {time_since_last_post} seconds ago")
         
         # Special handling for the post after first post
         if self.settings.get('was_first_post'):
             if now >= target_time and last_post < target_time:
-                log.info("First post case: past target time and haven't posted since before target")
                 self.settings['was_first_post'] = False
                 return True
-            log.info("First post case: conditions not met")
             return False
             
         # Regular posts: must be at least 23.5 hours since last post
         if time_since_last_post < 23.5 * 60 * 60:
-            log.info("Not enough time has passed since last post")
             return False
             
         # If we're past today's target time and haven't posted since before it
         if now >= target_time and last_post < target_time:
-            log.info("Past target time and haven't posted since before target")
             return True
             
         # If it's been more than 24 hours since last post
         if time_since_last_post > 24 * 60 * 60:
-            log.info("More than 24 hours since last post")
             return True
             
-        log.info("No posting conditions met")
         return False
 
     async def post_daily_message(self):
         """Post the daily meditation message and update settings"""
         try:
-            log.info("Attempting to post daily message")
             channel = self.bot.get_channel(int(self.settings['channel_id']))
             if channel:
                 log.info(f"Posting in channel {channel.name} ({channel.id})")
@@ -187,42 +178,30 @@ class MeditationCog(commands.Cog):
     @tasks.loop(minutes=1)
     async def daily_post(self):
         try:
-            log.info("Daily post task started")
             if self._post_lock.locked():
-                log.info("Post lock is already held, skipping this run")
                 return
                 
             async with self._post_lock:
-                log.info("Acquired post lock")
                 if not self.settings['channel_id']:
-                    log.info("No channel ID set, skipping post")
                     return
 
                 now = datetime.datetime.now(pytz.UTC)
-                log.info(f"Current time: {now.isoformat()}")
                 
                 # Rate limit check
                 if self._last_post_attempt:
                     time_since_last = (now - self._last_post_attempt).total_seconds()
-                    log.info(f"Time since last post attempt: {time_since_last} seconds")
                     if time_since_last < 300:
-                        log.info("Within rate limit period, skipping")
                         return
                 
                 self._last_post_attempt = now
                 target_time = now.replace(hour=7, minute=30, second=0, microsecond=0)
-                log.info(f"Target time: {target_time.isoformat()}")
                 
                 # Normal case: it's exactly 7:30 AM
                 if now.hour == target_time.hour and now.minute == target_time.minute:
-                    log.info("It's exactly posting time")
                     await self.post_daily_message()
                 # Recovery case: check if we missed posting
                 elif self.should_post(now):
-                    log.info("Recovery posting needed")
                     await self.post_daily_message()
-                else:
-                    log.info("No post needed at this time")
         except Exception as e:
             log.exception("Error in daily_post task")
 
